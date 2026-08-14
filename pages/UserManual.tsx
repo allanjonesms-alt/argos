@@ -1,0 +1,378 @@
+
+import React, { useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { FileText, Download, ChevronRight, Info, Shield, UserPlus, Camera, Map as MapIcon, History, MapPin, Calendar, Clock, Edit3, FileDigit, Plus, Search, Trash2, Eye } from 'lucide-react';
+
+const UserManual: React.FC = () => {
+  const manualRef = useRef<HTMLDivElement>(null);
+
+  const downloadPDF = async () => {
+    if (!manualRef.current) return;
+    
+    const element = manualRef.current;
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    
+    let heightLeft = pdfHeight;
+    let position = 0;
+    
+    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+    heightLeft -= pdf.internal.pageSize.getHeight();
+    
+    while (heightLeft >= 0) {
+      position = heightLeft - pdfHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pdf.internal.pageSize.getHeight();
+    }
+    
+    pdf.save('Manual_Usuario_ARGOS.pdf');
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto py-8 px-4">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-black text-navy-950 uppercase tracking-tighter">Manual do Usuário</h1>
+          <p className="text-navy-500 text-sm font-bold uppercase tracking-widest mt-1">ARGOS - Sistema de Gestão de Abordagens</p>
+        </div>
+        <button 
+          onClick={downloadPDF}
+          className="bg-navy-600 hover:bg-navy-500 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl flex items-center gap-2 active:scale-95"
+        >
+          <Download size={16} /> Baixar PDF
+        </button>
+      </div>
+
+      <div ref={manualRef} className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-navy-100 shadow-2xl space-y-12 text-navy-900">
+        {/* Capa do Manual */}
+        <div className="text-center py-10 border-b border-navy-50">
+          <div className="bg-navy-900 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+            <Shield size={40} className="text-white" />
+          </div>
+          <h2 className="text-4xl font-black text-navy-950 uppercase tracking-tighter mb-2">ARGOS</h2>
+          <p className="text-navy-400 font-black uppercase text-[10px] tracking-[0.3em]">Guia de Operações para Operadores</p>
+        </div>
+
+        {/* Seção 1: Introdução */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><Info size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">1. Introdução</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            O ARGOS é uma ferramenta desenvolvida para otimizar o registro e a consulta de abordagens policiais. 
+            Este manual orienta os <strong>Operadores</strong> sobre como utilizar todas as funcionalidades do sistema, 
+            desde o início do serviço até o registro detalhado de ocorrências.
+          </p>
+        </section>
+
+        {/* Seção 2: Acesso e Login */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><Shield size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">2. Acesso e Login</h3>
+          </div>
+          <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-3">
+            <p className="text-sm font-bold text-navy-800">Primeiro Acesso:</p>
+            <ul className="list-disc list-inside text-sm text-navy-600 space-y-2 ml-4">
+              <li>Utilize sua <strong>Matrícula</strong> e a senha padrão fornecida pelo administrador.</li>
+              <li>No primeiro acesso, o sistema exigirá obrigatoriamente a <strong>alteração da senha</strong>.</li>
+              <li>Escolha uma senha segura e de fácil memorização.</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* Seção 3: Início de Serviço */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><History size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">3. Gestão de Serviço (VTR)</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            Para realizar qualquer registro de abordagem, é necessário que haja um <strong>Serviço Ativo</strong>.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="border border-navy-100 p-5 rounded-2xl bg-white shadow-sm">
+              <h4 className="font-black text-navy-950 text-xs uppercase mb-2">Iniciar Serviço</h4>
+              <p className="text-xs text-navy-500 leading-relaxed">
+                Clique no botão <strong>"INICIAR SERVIÇO"</strong> no cabeçalho. Informe o Comandante, Motorista e Patrulheiros da guarnição.
+              </p>
+            </div>
+            <div className="border border-navy-100 p-5 rounded-2xl bg-white shadow-sm">
+              <h4 className="font-black text-navy-950 text-xs uppercase mb-2">Encerrar Serviço</h4>
+              <p className="text-xs text-navy-500 leading-relaxed">
+                Ao final do turno, clique em <strong>"ENCERRAR SERVIÇO"</strong>. Isso libera a VTR para a próxima equipe.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Seção 4: Indivíduos */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><UserPlus size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">4. Cadastro de Indivíduos</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            A base de dados de indivíduos é o coração do sistema. Antes de registrar uma abordagem, verifique se o indivíduo já possui cadastro.
+          </p>
+          <div className="space-y-4">
+            <div className="flex items-start gap-4 p-4 bg-navy-50 rounded-2xl">
+              <div className="bg-navy-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold">1</div>
+              <div>
+                <p className="text-sm font-bold text-navy-900">Pesquisa Inteligente</p>
+                <p className="text-xs text-navy-500">Utilize a barra de busca para encontrar por Nome ou Documento. O sistema filtra em tempo real.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-4 p-4 bg-navy-50 rounded-2xl">
+              <div className="bg-navy-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold">2</div>
+              <div>
+                <p className="text-sm font-bold text-navy-900">Novo Cadastro</p>
+                <p className="text-xs text-navy-500">Se não encontrar, clique em "NOVO CADASTRO". Preencha Nome, Alcunha, Facção, Nome da Mãe e Endereço.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-4 p-4 bg-navy-50 rounded-2xl">
+              <div className="bg-navy-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold">3</div>
+              <div>
+                <p className="text-sm font-bold text-navy-900">Gestão de Fotos</p>
+                <p className="text-xs text-navy-500">Adicione fotos de frente, perfil e tatuagens. Defina uma foto como <strong>Principal</strong> para identificação rápida.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Seção 5: Abordagens */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><Camera size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">5. Registro de Abordagens</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            O registro de abordagem vincula um indivíduo a um local, data e horário específicos, permitindo o rastreamento operacional preciso.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4">
+              <div className="flex items-center gap-3 text-navy-900">
+                <MapPin size={20} className="text-navy-600" />
+                <h4 className="font-black text-xs uppercase tracking-widest">Localização e Mapa</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Ao abrir o formulário, o sistema tentará <strong>obter sua localização atual</strong> automaticamente via GPS. 
+                O ícone de marcador no mapa <i className="fas fa-map-marker-alt text-red-600 mx-1"></i> indica o ponto exato capturado.
+              </p>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Caso o GPS falhe ou você precise registrar um local diferente, você pode <strong>digitar o endereço manualmente</strong> nos campos de Rua, Bairro e Cidade.
+              </p>
+            </div>
+
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4">
+              <div className="flex items-center gap-3 text-navy-900">
+                <Calendar size={20} className="text-navy-600" />
+                <h4 className="font-black text-xs uppercase tracking-widest">Data e Horário</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Por padrão, o sistema utiliza o horário atual do registro. No entanto, é possível retroagir ou ajustar essas informações.
+              </p>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Clique no <strong>ícone de calendário</strong> <Calendar size={14} className="inline mb-1" /> ou no campo de data/hora para abrir o seletor e ajustar o momento exato da abordagem.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-forest-50 p-6 rounded-3xl border border-forest-100">
+            <h4 className="text-forest-900 font-black text-xs uppercase mb-4 flex items-center gap-2">
+              <i className="fas fa-check-circle"></i> Fluxo de Registro
+            </h4>
+            <ol className="space-y-3 text-sm text-forest-800 font-medium">
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Selecione o indivíduo na lista ou cadastre um novo.</li>
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Clique em "NOVA ABORDAGEM" (no dashboard ou no perfil do indivíduo).</li>
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Verifique se o mapa capturou o local correto ou digite o endereço.</li>
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Ajuste a data/hora se necessário clicando nos ícones correspondentes.</li>
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Descreva o Relatório da ocorrência e Objetos Apreendidos (se houver).</li>
+              <li className="flex gap-3"><ChevronRight size={14} className="mt-1 flex-shrink-0" /> Salve o registro para disponibilizá-lo imediatamente na rede.</li>
+            </ol>
+          </div>
+
+          <div className="bg-navy-900 p-6 rounded-3xl border border-navy-800 space-y-4">
+            <h4 className="text-white font-black text-xs uppercase mb-2 flex items-center gap-2">
+              <Eye size={16} /> Registro Rápido SAW (Visualização)
+            </h4>
+            <p className="text-xs text-navy-200 leading-relaxed">
+              A função <strong>SAW (Sistema de Abordagem Rápida)</strong> permite registrar a visualização de um indivíduo sem a necessidade de uma abordagem física ou relatório detalhado.
+            </p>
+            <ul className="text-xs text-navy-200 space-y-2 list-disc list-inside">
+              <li>Acesse pelo ícone de <strong>Olho</strong> <Eye size={12} className="inline" /> no menu superior ou no perfil do indivíduo.</li>
+              <li>O sistema captura automaticamente o local e horário atual.</li>
+              <li>Estes registros aparecem no histórico com um ícone de olho azul, diferenciando-os de abordagens completas.</li>
+              <li>Ideal para monitoramento de alvos em movimento ou locais de aglomeração.</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* Seção 6: Ocorrências e Parte Diária */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><FileDigit size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">6. Parte Diária & Lançamento de Ações Rápidas</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            O módulo de <strong>Parte Diária de Serviço</strong> e de <strong>Lançamento de Ocorrências Rápidas</strong> representa o coração do controle administrativo e operacional eletrônico do sistema. Ele permite que a guarnição registre de forma digital e estruturada toda a sua rotina, do início ao fim do turno de serviço.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Bloco 6.1: Fluxo Administrativo da Viatura */}
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4">
+              <div className="flex items-center gap-3 text-navy-900">
+                <Shield size={20} className="text-navy-600" />
+                <h4 className="font-black text-xs uppercase tracking-widest">Abertura e Administração</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Antes de iniciar as atividades operacionais em campo, o Chefe de Guarnição / Operador do sistema deve realizar a abertura da Parte Diária informando:
+              </p>
+              <ul className="text-xs text-navy-600 space-y-2 list-disc list-inside">
+                <li><strong>Composição da Equipe:</strong> Vínculo com os militares de serviço (Comandante, Motorista, Auxiliares) e indicação do prefixo da viatura.</li>
+                <li><strong>Quilometragem de Ronda:</strong> Registro do odômetro inicial (na assunção do serviço) e odômetro final (no encerramento do turno) para cálculo automatizado de quilômetros rodados.</li>
+                <li><strong>Materiais de Carga:</strong> Controle eletrônico dos armamentos institucionais, quantidade de munições, validade de coletes balísticos em posse da equipe e carregadores adicionais.</li>
+              </ul>
+            </div>
+
+            {/* Bloco 6.2: Ações Operacionais Rápidas */}
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4">
+              <div className="flex items-center gap-3 text-navy-900">
+                <Plus size={20} className="text-navy-600" />
+                <h4 className="font-black text-xs uppercase tracking-widest">Ações Rápidas no Campo</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Para dinamizar o registro das apreensões e atuações mais recorrentes, o sistema disponibiliza um painel de inserção rápida onde é possível lançar dados quantitativos e qualitativos de:
+              </p>
+              <ul className="text-xs text-navy-600 space-y-1.5 list-disc list-inside">
+                <li><strong>Apreensão de Entorpecentes:</strong> Cadastro rápido de frações, gramaturas ou tabletes de drogas arrecadadas em via pública.</li>
+                <li><strong>Retirada de Armas de Fogo de Circulação:</strong> Catalogação rápida de revólveres, pistolas e munições intactas ou deflagradas.</li>
+                <li><strong>Localização/Recuperação de Veículos:</strong> Inserção de chassi ou placa de veículos localizados com restrição de furto ou roubo.</li>
+              </ul>
+            </div>
+
+            {/* Bloco 6.3: Acidente de Trânsito sem Vítima (Otimizado) */}
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4 md:col-span-2">
+              <div className="flex items-center gap-3 text-navy-900">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <h4 className="font-black text-xs uppercase tracking-widest text-navy-900">Fluxo Exclusivo de Acidente de Trânsito Sem Vítima (AT-SV)</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Reconhecendo a importância de desobstruir vias públicas de forma extremamente rápida para evitar novos acidentes, o fluxo de <strong>"Acidente de trânsito sem Vítima"</strong> foi severamente otimizado e simplificado:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="bg-white/80 p-4 rounded-2xl border border-navy-100 space-y-2">
+                  <span className="text-[10px] uppercase font-black text-navy-950 block">Placa do Veículo (Opcional)</span>
+                  <p className="text-[11px] text-navy-500 leading-relaxed">
+                    Caso a guarnição decida catalogar o veículo envolvido para referência cruzada, basta digitar os 7 caracteres da placa. No entanto, o preenchimento <strong>NÃO É OBRIGATÓRIO</strong>.
+                  </p>
+                </div>
+                <div className="bg-white/80 p-4 rounded-2xl border border-navy-100 space-y-2">
+                  <span className="text-[10px] uppercase font-black text-navy-950 block">Botão de Confirmação Unificada</span>
+                  <p className="text-[11px] text-navy-500 leading-relaxed">
+                    Com apenas um clique no botão de registro, a ocorrência de trânsito estará salva na plataforma, registrando as coordenadas de posicionamento de forma invisível e encerrando o procedimento de imediato.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 6.4: SS e RO */}
+            <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-4 md:col-span-2">
+              <div className="flex items-center gap-3 text-navy-900">
+                <FileDigit size={20} className="text-navy-600" />
+                <h4 className="font-black text-xs uppercase tracking-widest">Solicitações de Serviço (SS) e Relatórios de Ocorrência (RO)</h4>
+              </div>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Para as ocorrências que requerem condução para delegacia de polícia civil ou atuação complexa, a equipe deve seguir com os registros formais:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-xs font-black text-navy-900 block">Número de Solicitação de Serviço (SS)</span>
+                  <p className="text-xs text-navy-500 leading-relaxed">
+                    Digite os <strong>10 dígitos numéricos</strong> despachados pelo centro de controle. Selecione o tipo de SS (rondas preventivas, eventos esportivos, fiscalização de medidas protetivas, etc.) e vincule os operadores responsáveis.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs font-black text-navy-900 block">Relatório de Ocorrência (RO)</span>
+                  <p className="text-xs text-navy-500 leading-relaxed">
+                    Informe o correspondente número gerado e selecione a natureza do fato penal (Roubo, Tráfico de Drogas, Receptação, Lesão Corporal, etc.) em nossa lista organizada alfabeticamente para fins de dados quantitativos do batalhão.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Seção 7: Organograma de Perfis e Segurança */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><Shield size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">7. Organograma Tático & Perfis de Acesso</h3>
+          </div>
+          <p className="text-navy-600 leading-relaxed">
+            Consulte a árvore detalhada de privilégios de acesso do sistema diretamente na guia correspondente das <strong>Configurações do Sistema</strong>. Cada nível possui restrições precisas em conformidade com as normas operacionais:
+          </p>
+          <div className="bg-navy-50 p-6 rounded-3xl border border-navy-100 space-y-3">
+            <ul className="list-disc list-inside text-xs text-navy-600 space-y-2 ml-2">
+              <li><strong>MASTER (Supremo):</strong> Engenharia técnica interna com acesso total, modificações profundas e visualização estruturada de organogramas de facções.</li>
+              <li><strong>ADMIN (Administrador):</strong> Controle de frota, gerenciamento de viaturas, homologação e credenciamento de novos operadores.</li>
+              <li><strong>SUPERVISOR:</strong> Controle tático de área, escalas de serviço militar, visão analítica e relatórios consolidados do dia.</li>
+              <li><strong>CHEFE DE EQUIPE & OPERADOR:</strong> Preenchimento completo de escalas da VTR, confecção da Parte Diária, cadastro de indivíduos abordados e consulta inteligente.</li>
+              <li><strong>PATRULHEIRO:</strong> Perfil simplificado voltado à ronda eletrônica em campo, consultas territoriais rápidas de indivíduos e visualizações de mapas operacionais.</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* Seção 8: Galeria e Mapas */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-navy-100 p-2 rounded-lg text-navy-600"><MapIcon size={20} /></div>
+            <h3 className="text-xl font-black text-navy-950 uppercase tracking-tight">8. Inteligência e Visualização</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-navy-900 uppercase">Galeria e Filtros</p>
+              <p className="text-xs text-navy-500 leading-relaxed">
+                Visualize rapidamente todos os indivíduos cadastrados através de suas fotos principais. 
+                Utilize o <strong>Filtro por Facções</strong> (CV, PCC, ADA, TCP) na lista de indivíduos para identificar membros de grupos específicos. 
+                Você também pode filtrar por cidade na Galeria para focar na sua área de atuação.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-navy-900 uppercase">Mapas Operacionais</p>
+              <p className="text-xs text-navy-500 leading-relaxed">
+                Veja a mancha criminal e os locais de abordagens no mapa. Os pins indicam locais de abordagens e residências de indivíduos. 
+                No mapa, você pode clicar em um pin para ver detalhes e acessar o link direto para o perfil do indivíduo.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Rodapé do Manual */}
+        <div className="pt-10 border-t border-navy-50 text-center">
+          <p className="text-[10px] font-black text-navy-400 uppercase tracking-widest">
+            ARGOS - SISTEMA DE GESTÃO DE ABORDAGENS • VERSÃO 1.0
+          </p>
+          <p className="text-[8px] text-navy-300 uppercase mt-2">
+            Desenvolvido para uso exclusivo da Polícia Militar.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UserManual;

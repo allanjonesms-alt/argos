@@ -1,0 +1,12 @@
+{
+  "name": "ARGOS",
+  "description": "Sistema de registro, consulta e gerenciamento de abordagens policiais, indivíduos e galeria de registros fotográficos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

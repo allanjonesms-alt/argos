@@ -1,0 +1,825 @@
+
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (police officer)",
+      "type": "object",
+      "properties": {
+        "matricula": {
+          "type": "string",
+          "description": "Officer ID number"
+        },
+        "nome": {
+          "type": "string",
+          "description": "Officer name"
+        },
+        "senha": {
+          "type": "string",
+          "description": "Officer password"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["ADMIN", "OPERATOR", "MASTER", "ADMIN MASTER", "CHEFE_DE_EQUIPE", "PATRULHEIRO", "SUPERVISOR_DE_OPERACOES", "SUPERVISÃO DE OPERAÇÕES", "SUPERVISOR DE OPERAÇÕES"],
+          "description": "Officer role"
+        },
+        "primeiro_acesso": {
+          "type": "boolean",
+          "description": "Whether the officer has completed their first access"
+        },
+        "ord": {
+          "type": "integer",
+          "description": "Order for display"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["matricula", "nome", "senha", "role"]
+    },
+    "Individual": {
+      "title": "Individual",
+      "description": "Person approached or registered in the system",
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string",
+          "description": "Full name"
+        },
+        "alcunha": {
+          "type": "string",
+          "description": "Nickname"
+        },
+        "documento": {
+          "type": "string",
+          "description": "ID document number"
+        },
+        "data_nascimento": {
+          "type": "string",
+          "format": "date",
+          "description": "Birth date"
+        },
+        "mae": {
+          "type": "string",
+          "description": "Mother's name"
+        },
+        "endereco": {
+          "type": "string",
+          "description": "Address"
+        },
+        "faccao": {
+          "type": "string",
+          "description": "Criminal faction affiliation"
+        },
+        "observacao": {
+          "type": "string",
+          "description": "General observations"
+        },
+        "unidade": {
+          "type": "string",
+          "description": "Police unit"
+        },
+        "cidade": {
+          "type": "string",
+          "description": "City of the individual"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        },
+        "criado_por": {
+          "type": "string",
+          "description": "Operator who registered the individual"
+        }
+      },
+      "required": ["nome"]
+    },
+    "IndividualPhoto": {
+      "title": "IndividualPhoto",
+      "description": "Photo of an individual",
+      "type": "object",
+      "properties": {
+        "individuo_id": {
+          "type": "string",
+          "description": "Reference to the individual"
+        },
+        "path": {
+          "type": "string",
+          "description": "Storage path or URL"
+        },
+        "is_primary": {
+          "type": "boolean",
+          "description": "Whether this is the main photo"
+        },
+        "sort_order": {
+          "type": "integer",
+          "description": "Order for display"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "User who uploaded the photo"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["individuo_id", "path"]
+    },
+    "IndividualAttachment": {
+      "title": "IndividualAttachment",
+      "description": "Attachment for an individual",
+      "type": "object",
+      "properties": {
+        "individuo_id": {
+          "type": "string",
+          "description": "Reference to the individual"
+        },
+        "nome_arquivo": {
+          "type": "string",
+          "description": "File name"
+        },
+        "tipo_mime": {
+          "type": "string",
+          "description": "MIME type"
+        },
+        "path": {
+          "type": "string",
+          "description": "Storage path or URL (base64 for now)"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "User who uploaded the attachment"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["individuo_id", "nome_arquivo", "path"]
+    },
+    "Approach": {
+      "title": "Approach",
+      "description": "Police approach record",
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of the approach"
+        },
+        "horario": {
+          "type": "string",
+          "description": "Time of the approach"
+        },
+        "local": {
+          "type": "string",
+          "description": "Location of the approach"
+        },
+        "relatorio": {
+          "type": "string",
+          "description": "Detailed report"
+        },
+        "objetos_apreendidos": {
+          "type": "string",
+          "description": "Items seized"
+        },
+        "resultado": {
+          "type": "string",
+          "description": "Outcome of the approach"
+        },
+        "individuo_nome": {
+          "type": "string",
+          "description": "Name of the individual approached"
+        },
+        "individuo_id": {
+          "type": "string",
+          "description": "Reference to the individual record"
+        },
+        "foto_path": {
+          "type": "string",
+          "description": "Path to a photo of the approach"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "is_saw": {
+          "type": "boolean",
+          "description": "Whether this is a quick sighting (SAW) record"
+        }
+      },
+      "required": ["data", "horario", "local"]
+    },
+    "VtrService": {
+      "title": "VtrService",
+      "description": "Patrol car shift/service record",
+      "type": "object",
+      "properties": {
+        "comandante": {
+          "type": "string",
+          "description": "Commander name"
+        },
+        "motorista": {
+          "type": "string",
+          "description": "Driver name"
+        },
+        "patrulheiro_1": {
+          "type": "string",
+          "description": "Patrol officer 1"
+        },
+        "patrulheiro_2": {
+          "type": "string",
+          "description": "Patrol officer 2"
+        },
+        "horario_inicio": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Start time"
+        },
+        "horario_fim": {
+          "type": "string",
+          "format": "date-time",
+          "description": "End time"
+        },
+        "criado_por": {
+          "type": "string",
+          "description": "User ID who started the service"
+        },
+        "encerrado_por_nome": {
+          "type": "string",
+          "description": "User name who ended the service"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ATIVO", "ENCERRADO"],
+          "description": "Service status"
+        }
+      },
+      "required": ["comandante", "motorista", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System audit log entry",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User who performed the action"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Name of the user"
+        },
+        "action": {
+          "type": "string",
+          "description": "Action performed"
+        },
+        "details": {
+          "type": "string",
+          "description": "Details of the action"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the action occurred"
+        }
+      },
+      "required": ["userId", "userName", "action", "details", "timestamp"]
+    },
+    "OccurrenceSS": {
+      "title": "OccurrenceSS",
+      "description": "Solicitação de Serviço record",
+      "type": "object",
+      "properties": {
+        "nr_ss": {
+          "type": "string",
+          "description": "SS number (10 digits)"
+        },
+        "tipo_ss": {
+          "type": "string",
+          "enum": ["Rondas", "Policiamento em evento", "Policiamento Medidas Protetivas", "Atendimento de Chamada"],
+          "description": "Type of service"
+        },
+        "gu_servico": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of operators in the group"
+        },
+        "unidade": {
+          "type": "string",
+          "description": "Police unit"
+        },
+        "criado_por": {
+          "type": "string",
+          "description": "User who created the record"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["nr_ss", "tipo_ss", "gu_servico", "criado_por", "created_at"]
+    },
+    "OccurrenceRO": {
+      "title": "OccurrenceRO",
+      "description": "Relatório de Ocorrência record",
+      "type": "object",
+      "properties": {
+        "nr_ro": {
+          "type": "string",
+          "description": "RO number"
+        },
+        "fato": {
+          "type": "string",
+          "description": "Incident type"
+        },
+        "unidade": {
+          "type": "string",
+          "description": "Police unit"
+        },
+        "criado_por": {
+          "type": "string",
+          "description": "User who created the record"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["nr_ro", "fato", "criado_por", "created_at"]
+    },
+    "SystemVersion": {
+      "title": "SystemVersion",
+      "description": "System version history",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Version number (e.g., 1.0.0)"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ATUALIZAÇÃO", "REPARO"],
+          "description": "Type of version update"
+        },
+        "description": {
+          "type": "string",
+          "description": "Changes description"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of the update"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["version", "type", "description", "date"]
+    },
+    "IndividualRelationship": {
+      "title": "IndividualRelationship",
+      "description": "Relationship between two individuals",
+      "type": "object",
+      "properties": {
+        "individuo_id": {
+          "type": "string",
+          "description": "Reference to the main individual"
+        },
+        "relacionado_id": {
+          "type": "string",
+          "description": "Reference to the related individual"
+        },
+        "tipo": {
+          "type": "string",
+          "enum": ["COMPARSA", "FAMILIAR"],
+          "description": "Type of relationship"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "User who created the relationship"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["individuo_id", "relacionado_id", "tipo"]
+    },
+    "ConfidentialInfo": {
+      "title": "ConfidentialInfo",
+      "description": "Historical classified information for an individual",
+      "type": "object",
+      "properties": {
+        "individuo_id": {
+          "type": "string",
+          "description": "Reference to the individual"
+        },
+        "conteudo": {
+          "type": "string",
+          "description": "Confidential content"
+        },
+        "operador_nome": {
+          "type": "string",
+          "description": "Name of the operator who recorded it"
+        },
+        "operador_id": {
+          "type": "string",
+          "description": "ID of the operator who recorded it"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["individuo_id", "conteudo", "operador_nome", "operador_id", "created_at"]
+    },
+    "CrimeGroup": {
+      "title": "CrimeGroup",
+      "description": "Criminal group/faction in a city",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "cidade": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["DROGAS", "ARMAS", "ROUBOS"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "cidade", "tipo"]
+    },
+    "CrimeMember": {
+      "title": "CrimeMember",
+      "description": "Member of a crime organogram",
+      "type": "object",
+      "properties": {
+        "group_id": { "type": "string" },
+        "individual_id": { "type": "string" },
+        "role": { "type": "string", "enum": ["DISTRIBUIDOR", "BOCA_DE_FUMO", "VAPOR", "USUARIO"] },
+        "parent_id": { "type": "string" },
+        "drugs": { "type": "array", "items": { "type": "string" } },
+        "funcao_especifica": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["group_id", "individual_id", "role"]
+    },
+    "ParteDiaria": {
+      "title": "ParteDiaria",
+      "description": "Daily service report from a police unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nr_parte": { "type": "integer" },
+        "data_selecionada": { "type": "string" },
+        "intervalo_data": { "type": "string" },
+        "unidade": { "type": "string" },
+        "graduado_anterior": { "type": "string" },
+        "graduado_atual": { "type": "string" },
+        "pessoal_servico": { "type": "string" },
+        "pessoal_civil": { "type": "string" },
+        "servico_saude": { "type": "string" },
+        "material_carga": { "type": "string" },
+        "instalacoes": { "type": "string" },
+        "apresentacao_pracas": { "type": "string" },
+        "presos_detidos": { "type": "string" },
+        "viaturas_disponiveis": { "type": "string" },
+        "ocorrencias_transito": { "type": "string" },
+        "ocorrencias_policiais": { "type": "string" },
+        "diversos": { "type": "string" },
+        "criado_por_id": { "type": "string" },
+        "criado_por_nome": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nr_parte", "data_selecionada", "unidade", "graduado_anterior", "graduado_atual"]
+    },
+    "DailyAction": {
+      "title": "DailyAction",
+      "description": "Daily rapid service operational actions (abordagens, operacoes, apreensoes, acidentes)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "categoria": { "type": "string" },
+        "tipo_acao": { "type": "string" },
+        "unidade": { "type": "string" },
+        "cidade": { "type": "string" },
+        "vtr_service_id": { "type": "string" },
+        "equipe_detalhes": { "type": "string" },
+        "comandante": { "type": "string" },
+        "viatura_prefixo": { "type": "string" },
+        "criado_por_id": { "type": "string" },
+        "criado_por_nome": { "type": "string" },
+        "quantidade": { "type": "integer" },
+        "detalhes": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "data_selecionada": { "type": "string" }
+      },
+      "required": ["id", "categoria", "tipo_acao", "unidade", "criado_por_id", "criado_por_nome", "quantidade", "detalhes", "created_at", "data_selecionada"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Police patrol cars",
+      "type": "object",
+      "properties": {
+        "modelo": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["2 rodas", "4 rodas"] },
+        "placa": { "type": "string" },
+        "prefixo": { "type": "string" },
+        "unidade": { "type": "string" },
+        "km_atual": { "type": "integer" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["modelo", "tipo", "placa", "prefixo", "unidade"]
+    },
+    "OccurrenceTemplate": {
+      "title": "OccurrenceTemplate",
+      "description": "Occurrence template / RO example used in RO Assistant",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier"
+        },
+        "label": {
+          "type": "string",
+          "description": "Name/Label of the template"
+        },
+        "defaultNature": {
+          "type": "string",
+          "description": "Default crime nature"
+        },
+        "structure": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Recommended steps checklist"
+        },
+        "referenceModel": {
+          "type": "string",
+          "description": "Full reference RO text example"
+        },
+        "referenceModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of alternative reference texts"
+        },
+        "stepRegexes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Regex patterns (as strings) to check completion for each step"
+        },
+        "stepSuggestions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Suggested text snippet for each step"
+        },
+        "presetData": {
+          "type": "object",
+          "description": "Preset data fields to quickly fill the form"
+        }
+      },
+      "required": ["id", "label", "defaultNature", "structure", "referenceModel"]
+    },
+    "Requerimento": {
+      "title": "Requerimento",
+      "description": "Officer request or petition",
+      "type": "object",
+      "properties": {
+        "matricula": {
+          "type": "string",
+          "description": "Officer registration number"
+        },
+        "nome_operador": {
+          "type": "string",
+          "description": "Officer name"
+        },
+        "unidade": {
+          "type": "string",
+          "description": "Officer unit"
+        },
+        "tipo": {
+          "type": "string",
+          "enum": ["LICENCA_ESPECIAL", "ABONO", "FERIAS", "DISPENSA", "PROMOCOES", "OUTROS"],
+          "description": "Type of request"
+        },
+        "tipo_descricao": {
+          "type": "string",
+          "description": "Custom or human-readable type description"
+        },
+        "descricao": {
+          "type": "string",
+          "description": "Description / text of the request"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDENTE", "DEFERIDO", "INDEFERIDO"],
+          "description": "Status of the request"
+        },
+        "resposta_admin": {
+          "type": "string",
+          "description": "Administrator response or despacho"
+        },
+        "analisado_por_nome": {
+          "type": "string",
+          "description": "Name of the admin who analyzed it"
+        },
+        "analisado_por_id": {
+          "type": "string",
+          "description": "ID of the admin who analyzed it"
+        },
+        "analisado_em": {
+          "type": "string",
+          "description": "Date/time when request was analyzed"
+        },
+        "created_at": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "User ID of the requester"
+        }
+      },
+      "required": ["matricula", "nome_operador", "tipo", "descricao", "status", "created_by"]
+    },
+    "RequerimentoConfig": {
+      "title": "RequerimentoConfig",
+      "description": "Configuration for officer requests, including current commander info and templates",
+      "type": "object",
+      "properties": {
+        "comandante": {
+          "type": "object",
+          "properties": {
+            "nome": { "type": "string" },
+            "patente": { "type": "string" },
+            "funcao": { "type": "string" },
+            "matricula": { "type": "string" }
+          },
+          "required": ["nome", "patente", "funcao", "matricula"]
+        },
+        "predefined_solicitacoes": {
+          "type": "object",
+          "description": "Map of RequerimentoTipo to lists of predefined templates"
+        },
+        "updated_at": { "type": "string" },
+        "updated_by": { "type": "string" }
+      },
+      "required": ["comandante", "predefined_solicitacoes"]
+    },
+    "VoluntarioEscala": {
+      "title": "VoluntarioEscala",
+      "description": "Officer volunteering for extra paid shifts",
+      "type": "object",
+      "properties": {
+        "policial_id": { "type": "string" },
+        "data_ultima_escala": { "type": ["string", "null"] },
+        "posto_id": { "type": ["string", "null"] },
+        "nr_parte": { "type": ["string", "null"] },
+        "data_parte": { "type": ["string", "null"] },
+        "ativo": { "type": "boolean" }
+      },
+      "required": ["policial_id", "ativo"]
+    },
+    "PostoRemunerado": {
+      "title": "PostoRemunerado",
+      "description": "Paid shift station / location",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "local": { "type": "string" },
+        "ativo": { "type": "boolean" }
+      },
+      "required": ["nome", "local", "ativo"]
+    },
+    "EscalaRemunerada": {
+      "title": "EscalaRemunerada",
+      "description": "Paid shift assignments",
+      "type": "object",
+      "properties": {
+        "voluntario_id": { "type": "string" },
+        "posto_id": { "type": "string" },
+        "data_inicio": { "type": "string" },
+        "data_fim": { "type": "string" },
+        "observacao": { "type": ["string", "null"] }
+      },
+      "required": ["voluntario_id", "posto_id", "data_inicio", "data_fim"]
+    }
+  },
+  "firestore": {
+    "/voluntarios_escala/{docId}": {
+      "schema": "VoluntarioEscala",
+      "description": "Volunteers for paid shifts"
+    },
+    "/postos_remunerados/{docId}": {
+      "schema": "PostoRemunerado",
+      "description": "Paid shift posts"
+    },
+    "/escalas_remuneradas/{docId}": {
+      "schema": "EscalaRemunerada",
+      "description": "Paid shift duties"
+    },
+    "/requerimento_configs/{configId}": {
+      "schema": "RequerimentoConfig",
+      "description": "Unit commander and template setups"
+    },
+    "/requerimentos/{requerimentoId}": {
+      "schema": "Requerimento",
+      "description": "Officer requests and petitions"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "System users"
+    },
+    "/individuals/{individualId}": {
+      "schema": "Individual",
+      "description": "Individuals registered"
+    },
+    "/individual_photos/{photoId}": {
+      "schema": "IndividualPhoto",
+      "description": "Photos of individuals"
+    },
+    "/individual_attachments/{attachmentId}": {
+      "schema": "IndividualAttachment",
+      "description": "Attachments for individuals"
+    },
+    "/individual_relationships/{relationshipId}": {
+      "schema": "IndividualRelationship",
+      "description": "Relationships between individuals"
+    },
+    "/approaches/{approachId}": {
+      "schema": "Approach",
+      "description": "Approach records"
+    },
+    "/vtr_services/{serviceId}": {
+      "schema": "VtrService",
+      "description": "Patrol car services"
+    },
+    "/logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit logs"
+    },
+    "/occurrences/{occurrenceId}": {
+      "schema": "OccurrenceSS",
+      "description": "SS records"
+    },
+    "/occurrences_ro/{occurrenceId}": {
+      "schema": "OccurrenceRO",
+      "description": "RO records"
+    },
+    "/units/{unitId}": {
+      "schema": "Unit",
+      "description": "Police units"
+    },
+    "/system_versions/{versionId}": {
+      "schema": "SystemVersion",
+      "description": "System version history"
+    },
+    "/confidential_info/{infoId}": {
+      "schema": "ConfidentialInfo",
+      "description": "Historical classified information"
+    },
+    "/crime_groups/{groupId}": {
+      "schema": "CrimeGroup",
+      "description": "Criminal groups"
+    },
+    "/crime_members/{memberId}": {
+      "schema": "CrimeMember",
+      "description": "Members of criminal organograms"
+    },
+    "/parte_diaria/{docId}": {
+      "schema": "ParteDiaria",
+      "description": "Daily service reports"
+    },
+    "/daily_actions/{actionId}": {
+      "schema": "DailyAction",
+      "description": "Daily rapid service operational actions (abordagens, operacoes, apreensoes, acidentes)"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Police patrol cars registered in the fleet"
+    },
+    "/ro_templates/{templateId}": {
+      "schema": "OccurrenceTemplate",
+      "description": "Occurrence templates and RO examples for the assistant"
+    }
+  }
+}
