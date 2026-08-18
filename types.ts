@@ -295,3 +295,40 @@ export interface Requerimento {
   certidao_responsavel?: { nome: string; patente: string; funcao: string; matricula: string };
   certidao_gestor_rh?: { nome: string; patente: string; funcao: string; matricula: string };
 }
+
+export interface PostoRemunerado {
+  id: string;
+  nome: string;
+  local: string;
+  pontos?: number;
+  ativo: boolean;
+}
+
+export interface Voluntario {
+  id: string;
+  policial_id: string;
+  data_ultima_escala: string | null;
+  posto_id: string | null;
+  nr_parte: string | null;
+  data_parte: string | null;
+  ativo: boolean;
+  sem_escala?: boolean;
+  total_pontos?: number;
+  qtd_escalas?: number;
+  policial?: User;
+  posto?: PostoRemunerado;
+}
+
+export interface EscalaRemunerada {
+  id: string;
+  voluntario_id: string;
+  policial_id?: string;
+  posto_id: string;
+  data_inicio: string;
+  data_fim: string;
+  pontos?: number;
+  observacao: string | null;
+  voluntario?: Voluntario;
+  posto?: PostoRemunerado;
+}
+

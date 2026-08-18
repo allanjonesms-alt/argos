@@ -33,11 +33,22 @@ import {
   AlertCircle,
   X,
   Layers,
-  Award
+  Award,
+  ArrowUpDown,
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-interface Voluntario {
+export interface PostoRemunerado {
+  id: string;
+  nome: string;
+  local: string;
+  pontos?: number;
+  ativo: boolean;
+}
+
+export interface Voluntario {
   id: string;
   policial_id: string;
   data_ultima_escala: string | null;
@@ -46,27 +57,67 @@ interface Voluntario {
   data_parte: string | null;
   ativo: boolean;
   sem_escala?: boolean;
+  total_pontos?: number;
+  qtd_escalas?: number;
   policial?: User;
   posto?: PostoRemunerado;
 }
 
-interface PostoRemunerado {
-  id: string;
-  nome: string;
-  local: string;
-  ativo: boolean;
-}
-
-interface EscalaRemunerada {
+export interface EscalaRemunerada {
   id: string;
   voluntario_id: string;
+  policial_id?: string;
   posto_id: string;
   data_inicio: string;
   data_fim: string;
+  pontos?: number;
   observacao: string | null;
   voluntario?: Voluntario;
   posto?: PostoRemunerado;
 }
+
+// Configuração oficial de pontuação dos postos
+export const DEFAULT_POSTOS_CONFIG = [
+  { nome: 'OPERAÇÕES FEDERAIS', local: 'Fronteira / Federal', pontos: 1 },
+  { nome: 'PEF', local: 'Pelotão Especial de Fronteira', pontos: 2 },
+  { nome: 'APOIO A RECEITA FEDERAL', local: 'Posto Fiscal / Alfândega', pontos: 5 },
+];
+
+export const sanitizePostoNome = (nome: string): string => {
+  if (!nome) return '';
+  const trimmed = nome.trim();
+  if (
+    trimmed.toUpperCase().includes('OPERAÇÕES FEDERAIS - UNIDADE DE FRONTEIRA') ||
+    trimmed.toUpperCase().includes('OPERACOES FEDERAIS - UNIDADE DE FRONTEIRA') ||
+    trimmed.toUpperCase().includes('OPERAÇÕES FEDERAIS - UNIDADE DE FRONTEIRA / FEDERAL') ||
+    trimmed.toUpperCase().includes('OPERACOES FEDERAIS - UNIDADE DE FRONTEIRA / FEDERAL')
+  ) {
+    return 'OPERAÇÕES FEDERAIS';
+  }
+  return trimmed;
+};
+
+export const getPostoPoints = (posto?: { nome?: string; local?: string; pontos?: number } | null): number => {
+  if (!posto) return 1;
+  if (typeof posto.pontos === 'number' && !isNaN(posto.pontos) && posto.pontos >= 0) {
+    return posto.pontos;
+  }
+  const cleanName = (posto.nome || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const cleanLocal = (posto.local || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const combined = `${cleanName} ${cleanLocal}`;
+
+  if (combined.includes('RECEITA')) {
+    return 5;
+  }
+  if (combined.includes('PEF')) {
+    return 2;
+  }
+  if (combined.includes('OPERACOES FEDERAIS') || combined.includes('OPERACAO FEDERAL') || combined.includes('FEDERAL')) {
+    return 1;
+  }
+  return 1;
+};
+
 
 interface EscalaRemuneradaPageProps {
   user: User | null;
@@ -106,8 +157,10 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
   // Post form state
   const [postoNome, setPostoNome] = useState('');
   const [postoLocal, setPostoLocal] = useState('');
+  const [postoPontos, setPostoPontos] = useState<number>(1);
   const [editingPosto, setEditingPosto] = useState<PostoRemunerado | null>(null);
   const [isPostoDialogOpen, setIsPostoDialogOpen] = useState(false);
+  const [voluntariosViewMode, setVoluntariosViewMode] = useState<'por_local' | 'ranking_geral'>('por_local');
 
   // Escala form state
   const [selectedVoluntarioId, setSelectedVoluntarioId] = useState('');
@@ -151,11 +204,56 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     return () => unsubscribe();
   }, []);
 
-  // Sync postos_remunerados
+  // Sync postos_remunerados with automatic sanitation and default initialization
   useEffect(() => {
     const q = query(collection(db, 'postos_remunerados'), where('ativo', '==', true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PostoRemunerado));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const data = snapshot.docs.map(docSnap => {
+        const item = docSnap.data() as PostoRemunerado;
+        const sanitizedNome = sanitizePostoNome(item.nome);
+        const pts = getPostoPoints(item);
+        return {
+          id: docSnap.id,
+          ...item,
+          nome: sanitizedNome,
+          pontos: pts
+        } as PostoRemunerado;
+      });
+
+      // Auto migration in Firestore if needed (e.g. old name or missing pontos)
+      snapshot.docs.forEach(async (docSnap) => {
+        const item = docSnap.data();
+        const cleanNome = sanitizePostoNome(item.nome);
+        const calculatedPontos = getPostoPoints(item);
+        const needsNameFix = item.nome !== cleanNome;
+        const needsPontosFix = typeof item.pontos !== 'number' || item.pontos === undefined;
+
+        if (needsNameFix || needsPontosFix) {
+          try {
+            await updateDoc(doc(db, 'postos_remunerados', docSnap.id), {
+              nome: cleanNome,
+              pontos: calculatedPontos
+            });
+          } catch (e) {
+            console.error('Erro ao auto-migrar posto:', e);
+          }
+        }
+      });
+
+      // If database has no postos at all, seed defaults
+      if (snapshot.empty) {
+        try {
+          for (const defaultPosto of DEFAULT_POSTOS_CONFIG) {
+            await addDoc(collection(db, 'postos_remunerados'), {
+              ...defaultPosto,
+              ativo: true
+            });
+          }
+        } catch (e) {
+          console.error('Erro ao semear postos padrão:', e);
+        }
+      }
+
       setPostos(data);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'postos_remunerados'));
 
@@ -185,32 +283,124 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     return () => unsubscribe();
   }, []);
 
+  // Compute officer points and completed scales dynamically
+  const officerStatsMap = useMemo(() => {
+    const map = new Map<string, {
+      totalEscalas: number;
+      totalPontos: number;
+      breakdown: { postoNome: string; count: number; pontosUnit: number; totalPontos: number }[];
+      lastEscalaDate: string | null;
+      lastEscalaPostoNome: string | null;
+    }>();
+
+    // Map all completed escalas
+    escalas.forEach(escala => {
+      // Find officer ID: either stored directly in escala.policial_id or via voluntario record
+      let pId = escala.policial_id;
+      if (!pId && escala.voluntario_id) {
+        const vol = voluntarios.find(v => v.id === escala.voluntario_id);
+        if (vol) pId = vol.policial_id;
+      }
+      if (!pId) return;
+
+      const targetPosto = postos.find(p => p.id === escala.posto_id);
+      const points = typeof escala.pontos === 'number' ? escala.pontos : getPostoPoints(targetPosto);
+      const postName = targetPosto?.nome ? sanitizePostoNome(targetPosto.nome) : 'Posto';
+      const escalaDate = escala.data_fim || escala.data_inicio || null;
+
+      const current = map.get(pId) || {
+        totalEscalas: 0,
+        totalPontos: 0,
+        breakdown: [],
+        lastEscalaDate: null,
+        lastEscalaPostoNome: null
+      };
+
+      current.totalEscalas += 1;
+      current.totalPontos += points;
+
+      // Update breakdown
+      const existingBreakdown = current.breakdown.find(b => b.postoNome === postName);
+      if (existingBreakdown) {
+        existingBreakdown.count += 1;
+        existingBreakdown.totalPontos += points;
+      } else {
+        current.breakdown.push({
+          postoNome: postName,
+          count: 1,
+          pontosUnit: points,
+          totalPontos: points
+        });
+      }
+
+      // Track latest date
+      if (escalaDate) {
+        if (!current.lastEscalaDate || new Date(escalaDate) > new Date(current.lastEscalaDate)) {
+          current.lastEscalaDate = escalaDate;
+          current.lastEscalaPostoNome = postName;
+        }
+      }
+
+      map.set(pId, current);
+    });
+
+    return map;
+  }, [escalas, voluntarios, postos]);
+
+  // Helper to get stats for any police officer
+  const getOfficerStats = useCallback((policialId: string) => {
+    return officerStatsMap.get(policialId) || {
+      totalEscalas: 0,
+      totalPontos: 0,
+      breakdown: [],
+      lastEscalaDate: null,
+      lastEscalaPostoNome: null
+    };
+  }, [officerStatsMap]);
+
   // Map and populate relations for Volunteers and Escalas
   const populatedVoluntarios = useMemo(() => {
     return voluntarios.filter(v => v.ativo).map(vol => {
       const policial = usersList.find(u => u.id === vol.policial_id);
-      const posto = postos.find(p => p.id === vol.posto_id);
+      const rawPosto = postos.find(p => p.id === vol.posto_id);
+      const posto = rawPosto ? {
+        ...rawPosto,
+        nome: sanitizePostoNome(rawPosto.nome),
+        pontos: getPostoPoints(rawPosto)
+      } : undefined;
+
+      const stats = getOfficerStats(vol.policial_id);
+
       return {
         ...vol,
         policial,
-        posto
+        posto,
+        total_pontos: stats.totalPontos,
+        qtd_escalas: stats.totalEscalas
       };
     });
-  }, [voluntarios, usersList, postos]);
+  }, [voluntarios, usersList, postos, getOfficerStats]);
 
   const populatedEscalas = useMemo(() => {
     return escalas.map(escala => {
       // Find voluntario
       const voluntario = voluntarios.find(v => v.id === escala.voluntario_id);
-      const policial = voluntario ? usersList.find(u => u.id === voluntario.policial_id) : undefined;
-      const posto = postos.find(p => p.id === escala.posto_id);
+      const policial = voluntario ? usersList.find(u => u.id === voluntario.policial_id) : (escala.policial_id ? usersList.find(u => u.id === escala.policial_id) : undefined);
+      const rawPosto = postos.find(p => p.id === escala.posto_id);
+      const posto = rawPosto ? {
+        ...rawPosto,
+        nome: sanitizePostoNome(rawPosto.nome),
+        pontos: getPostoPoints(rawPosto)
+      } : undefined;
+
       return {
         ...escala,
-        voluntario: voluntario ? { ...voluntario, policial } : undefined,
+        voluntario: voluntario ? { ...voluntario, policial } : (policial ? { id: '', policial_id: policial.id, data_ultima_escala: null, posto_id: escala.posto_id, nr_parte: null, data_parte: null, ativo: false, policial } : undefined),
         posto
       };
     });
   }, [escalas, voluntarios, usersList, postos]);
+
 
   // Police officer live search
   const filteredSearchPolicias = useMemo(() => {
@@ -370,7 +560,51 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     }
   }, [selectedPolicial, voluntarioPostoId, findLastScaleDateForPosto]);
 
-  // Group and sort volunteers
+  // Comparator for volunteer priority (ascending score: lowest points = highest priority)
+  const compareVoluntariosPriority = useCallback((a: Voluntario, b: Voluntario): number => {
+    const pontosA = a.total_pontos ?? 0;
+    const pontosB = b.total_pontos ?? 0;
+
+    // 1. Ordem crescente de pontuação (Menos pontos = Prioridade Máxima)
+    if (pontosA !== pontosB) {
+      return pontosA - pontosB;
+    }
+
+    // 2. Desempate: Menor quantidade total de escalas cumpridas
+    const escalasA = a.qtd_escalas ?? 0;
+    const escalasB = b.qtd_escalas ?? 0;
+    if (escalasA !== escalasB) {
+      return escalasA - escalasB;
+    }
+
+    // 3. Desempate: Quem está há mais tempo sem escala (nunca escalado primeiro, depois data mais antiga)
+    const hasScaleA = !a.sem_escala && !!a.data_ultima_escala;
+    const hasScaleB = !b.sem_escala && !!b.data_ultima_escala;
+    if (!hasScaleA && hasScaleB) return -1;
+    if (hasScaleA && !hasScaleB) return 1;
+
+    if (hasScaleA && hasScaleB && a.data_ultima_escala && b.data_ultima_escala) {
+      const dateCmp = new Date(a.data_ultima_escala).getTime() - new Date(b.data_ultima_escala).getTime();
+      if (dateCmp !== 0) return dateCmp;
+    }
+
+    // 4. Desempate: Data da parte de inscrição mais antiga (quem se inscreveu primeiro)
+    if (a.data_parte && b.data_parte) {
+      const parteCmp = new Date(a.data_parte).getTime() - new Date(b.data_parte).getTime();
+      if (parteCmp !== 0) return parteCmp;
+    } else if (a.data_parte && !b.data_parte) {
+      return -1;
+    } else if (!a.data_parte && b.data_parte) {
+      return 1;
+    }
+
+    // 5. Ordem alfabética do policial
+    const nameA = a.policial?.nome || '';
+    const nameB = b.policial?.nome || '';
+    return nameA.localeCompare(nameB);
+  }, []);
+
+  // Group and sort volunteers by Posto/Local
   const voluntariosByLocal = useMemo(() => {
     const grouped: Record<string, Voluntario[]> = {};
     
@@ -382,66 +616,8 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
       grouped[localName].push(vol);
     });
 
-    const getEarliestOtherLocalDate = (vol: Voluntario): string | null => {
-      const otherEntries = populatedVoluntarios.filter(
-        (v) => v.policial_id === vol.policial_id && v.posto_id !== vol.posto_id && v.data_ultima_escala
-      );
-      if (otherEntries.length === 0) return null;
-      return otherEntries
-        .map((v) => v.data_ultima_escala!)
-        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
-    };
-
-    const compareNullableDate = (a: string | null, b: string | null): number => {
-      if (!a && !b) return 0;
-      if (!a) return -1; // nulls first
-      if (!b) return 1;
-      return new Date(a).getTime() - new Date(b).getTime();
-    };
-
     Object.keys(grouped).forEach((local) => {
-      grouped[local].sort((a, b) => {
-        // Define tiers based on the requested classification priority:
-        // Tier 1: NUNCA TER SIDO ESCALADO (has no scale in this local AND no scale in other locals)
-        // Tier 2: DATA DA ULTIMA ESCALA EM OUTRO LOCAL (has no scale in this local, but has scale in other locals)
-        // Tier 3: DATA DA ULTIMA ESCALA NAQUELE LOCAL (has scale in this local)
-        
-        const hasScaleThisLocalA = !a.sem_escala && !!a.data_ultima_escala;
-        const hasScaleThisLocalB = !b.sem_escala && !!b.data_ultima_escala;
-        
-        const otherDateA = getEarliestOtherLocalDate(a);
-        const otherDateB = getEarliestOtherLocalDate(b);
-        
-        let tierA = 3;
-        if (!hasScaleThisLocalA) {
-          tierA = otherDateA ? 2 : 1;
-        }
-        
-        let tierB = 3;
-        if (!hasScaleThisLocalB) {
-          tierB = otherDateB ? 2 : 1;
-        }
-        
-        if (tierA !== tierB) {
-          return tierA - tierB;
-        }
-        
-        // Sorting within the same tier
-        if (tierA === 1) {
-          // Both never scaled anywhere. Sort by data_parte ASC (crescente)
-          return compareNullableDate(a.data_parte, b.data_parte);
-        } else if (tierA === 2) {
-          // Both scaled in other locals but never here. Sort by the date of last scale in another local ASC (crescente)
-          const cmp = compareNullableDate(otherDateA, otherDateB);
-          if (cmp !== 0) return cmp;
-          return compareNullableDate(a.data_parte, b.data_parte);
-        } else {
-          // Both scaled in this local. Sort by data_ultima_escala in this local ASC (crescente)
-          const cmp = compareNullableDate(a.data_ultima_escala, b.data_ultima_escala);
-          if (cmp !== 0) return cmp;
-          return compareNullableDate(a.data_parte, b.data_parte);
-        }
-      });
+      grouped[local].sort(compareVoluntariosPriority);
     });
 
     const sortedKeys = Object.keys(grouped).sort((a, b) => {
@@ -451,7 +627,14 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     });
 
     return sortedKeys.map((local) => ({ local, list: grouped[local] }));
-  }, [populatedVoluntarios]);
+  }, [populatedVoluntarios, compareVoluntariosPriority]);
+
+  // Unified General Ranking (all volunteers ranked strictly by points and criteria)
+  const rankingGeralVoluntarios = useMemo(() => {
+    const list = [...populatedVoluntarios];
+    list.sort(compareVoluntariosPriority);
+    return list;
+  }, [populatedVoluntarios, compareVoluntariosPriority]);
 
   // Group Escalas by Posto/Local name and sort by data_inicio decrescente
   const escalasByPosto = useMemo(() => {
@@ -513,6 +696,7 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
 
     try {
       const parsedParteDate = parseBRDateToISO(dataParteText);
+      const officerStats = getOfficerStats(selectedPolicial.id);
 
       await addDoc(collection(db, 'voluntarios_escala'), {
         policial_id: selectedPolicial.id,
@@ -521,6 +705,8 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
         posto_id: voluntarioPostoId || null,
         nr_parte: nrParte || null,
         data_parte: parsedParteDate,
+        total_pontos: officerStats.totalPontos,
+        qtd_escalas: officerStats.totalEscalas,
         ativo: true
       });
 
@@ -529,8 +715,8 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
           user.id,
           user.nome,
           'ADD_VOLUNTARIO_ESCALA',
-          `Adicionou policial ${selectedPolicial.nome} como voluntário de escala remunerada.`,
-          { policialId: selectedPolicial.id }
+          `Adicionou policial ${selectedPolicial.nome} como voluntário de escala remunerada (${officerStats.totalPontos} pts, ${officerStats.totalEscalas} escalas cumpridas).`,
+          { policialId: selectedPolicial.id, pontos: officerStats.totalPontos, escalas: officerStats.totalEscalas }
         );
       }
 
@@ -639,13 +825,17 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
   // Actions: Postos
   const handleSavePosto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!postoNome.trim() || !postoLocal.trim()) return;
+    const cleanNome = sanitizePostoNome(postoNome.trim());
+    if (!cleanNome || !postoLocal.trim()) return;
+
+    const pointsToSave = typeof postoPontos === 'number' && !isNaN(postoPontos) ? Number(postoPontos) : getPostoPoints({ nome: cleanNome, local: postoLocal });
 
     try {
       if (editingPosto) {
         await updateDoc(doc(db, 'postos_remunerados', editingPosto.id), {
-          nome: postoNome,
-          local: postoLocal
+          nome: cleanNome,
+          local: postoLocal.trim(),
+          pontos: pointsToSave
         });
 
         if (user) {
@@ -653,14 +843,15 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
             user.id,
             user.nome,
             'UPDATE_POSTO_REMUNERADO',
-            `Atualizou o posto remunerado "${postoNome}".`,
-            { postoId: editingPosto.id }
+            `Atualizou o posto remunerado "${cleanNome}" (${pointsToSave} pts).`,
+            { postoId: editingPosto.id, pontos: pointsToSave }
           );
         }
       } else {
         await addDoc(collection(db, 'postos_remunerados'), {
-          nome: postoNome,
-          local: postoLocal,
+          nome: cleanNome,
+          local: postoLocal.trim(),
+          pontos: pointsToSave,
           ativo: true
         });
 
@@ -669,14 +860,15 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
             user.id,
             user.nome,
             'CREATE_POSTO_REMUNERADO',
-            `Criou novo posto remunerado "${postoNome}".`,
-            {}
+            `Criou novo posto remunerado "${cleanNome}" (${pointsToSave} pts).`,
+            { pontos: pointsToSave }
           );
         }
       }
 
       setPostoNome('');
       setPostoLocal('');
+      setPostoPontos(1);
       setEditingPosto(null);
       setIsPostoDialogOpen(false);
     } catch (err) {
@@ -714,11 +906,17 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     if (!selectedVoluntarioId || !selectedPostoId || !escalaDataInicio || !escalaDataFim) return;
 
     try {
+      const selectedVol = populatedVoluntarios.find(v => v.id === selectedVoluntarioId);
+      const targetPosto = postos.find(p => p.id === selectedPostoId);
+      const awardedPoints = getPostoPoints(targetPosto);
+
       await addDoc(collection(db, 'escalas_remuneradas'), {
         voluntario_id: selectedVoluntarioId,
+        policial_id: selectedVol?.policial_id || null,
         posto_id: selectedPostoId,
         data_inicio: escalaDataInicio,
         data_fim: escalaDataFim,
+        pontos: awardedPoints,
         observacao: escalaObservacao || null
       });
 
@@ -727,7 +925,6 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
         ativo: false
       });
 
-      const selectedVol = populatedVoluntarios.find(v => v.id === selectedVoluntarioId);
       const name = selectedVol?.policial?.nome || 'Policial';
 
       if (user) {
@@ -735,8 +932,8 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
           user.id,
           user.nome,
           'CREATE_ESCALA_REMUNERADA',
-          `Escalou o policial ${name} para o serviço extraordinário remunerado.`,
-          { voluntarioId: selectedVoluntarioId, postoId: selectedPostoId }
+          `Escalou o policial ${name} no posto ${targetPosto?.nome || 'Posto'} (+${awardedPoints} pts).`,
+          { voluntarioId: selectedVoluntarioId, postoId: selectedPostoId, pontos: awardedPoints }
         );
       }
 
@@ -766,11 +963,16 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
     if (!quickEscalaVoluntario || !quickPostoId || !quickDataInicio || !quickDataFim) return;
 
     try {
+      const targetPosto = postos.find(p => p.id === quickPostoId);
+      const awardedPoints = getPostoPoints(targetPosto);
+
       await addDoc(collection(db, 'escalas_remuneradas'), {
         voluntario_id: quickEscalaVoluntario.id,
+        policial_id: quickEscalaVoluntario.policial_id,
         posto_id: quickPostoId,
         data_inicio: quickDataInicio,
         data_fim: quickDataFim,
+        pontos: awardedPoints,
         observacao: quickObservacao || null
       });
 
@@ -786,8 +988,8 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
           user.id,
           user.nome,
           'CREATE_ESCALA_REMUNERADA_QUICK',
-          `Incluiu policial ${name} de forma rápida na escala extraordinária remunerada.`,
-          { voluntarioId: quickEscalaVoluntario.id, postoId: quickPostoId }
+          `Incluiu policial ${name} de forma rápida na escala extraordinária (${targetPosto?.nome || 'Posto'}, +${awardedPoints} pts).`,
+          { voluntarioId: quickEscalaVoluntario.id, postoId: quickPostoId, pontos: awardedPoints }
         );
       }
 
@@ -798,6 +1000,7 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
       handleFirestoreError(err, OperationType.CREATE, 'escalas_remuneradas');
     }
   };
+
 
   const handleRemoveEscala = async (id: string, voluntarioId: string, name: string) => {
     if (!confirm(`Remover a escala extraordinária do policial ${name}?`)) return;
@@ -899,6 +1102,59 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
         </button>
       </div>
 
+      {/* Point scoring official info banner */}
+      <div className="bg-gradient-to-r from-navy-950 via-navy-900 to-navy-950 border border-navy-800 rounded-3xl p-6 text-white shadow-lg space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#CB9E1B]/20 border border-[#CB9E1B]/30 flex items-center justify-center shrink-0">
+              <Award className="w-5 h-5 text-[#CB9E1B]" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                Sistema Oficial de Pontuação e Ordenamento
+                <span className="text-[10px] bg-[#CB9E1B] text-navy-950 font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                  Prioridade Crescente
+                </span>
+              </h3>
+              <p className="text-navy-300 text-xs mt-0.5">
+                O policial com <strong>menor pontuação</strong> acumulada possui prioridade máxima na escala extraordinária.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Post Points Badges */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-navy-800/80 border border-navy-700/60 rounded-xl px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-navy-300">OPERAÇÕES FEDERAIS:</span>
+              <span className="text-xs font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">1 PONTO</span>
+            </div>
+            <div className="bg-navy-800/80 border border-navy-700/60 rounded-xl px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-navy-300">PEF:</span>
+              <span className="text-xs font-black text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">2 PONTOS</span>
+            </div>
+            <div className="bg-navy-800/80 border border-navy-700/60 rounded-xl px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-navy-300">APOIO A RECEITA FEDERAL:</span>
+              <span className="text-xs font-black text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded border border-purple-400/20">5 PONTOS</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-navy-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px] text-navy-400">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span><strong>Cálculo Automático:</strong> Toda escala cumprida soma pontos ao militar.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-3.5 h-3.5 text-[#CB9E1B] shrink-0" />
+            <span><strong>Ordenamento Justo:</strong> Rankeado do menor para o maior total de pontos.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span><strong>Desempate:</strong> Menos escalas cumpridas e tempo sem escalar.</span>
+          </div>
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-10 h-10 border-4 border-navy-600 border-t-transparent rounded-full animate-spin mb-4" />
@@ -909,90 +1165,276 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
           {/* TAB CONTENT: VOLUNTARIOS */}
           {activeTab === 'voluntarios' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-navy-950 text-xl font-black uppercase tracking-tight">
-                  Lista de Policiais Voluntários
-                </h3>
-                {canManage && (
-                  <button
-                    onClick={() => {
-                      setSelectedPolicial(null);
-                      setSearchPolicialTerm('');
-                      setDataUltimaEscalaText('');
-                      setVoluntarioPostoId('');
-                      setNrParte('');
-                      setDataParteText('');
-                      setIsVoluntarioDialogOpen(true);
-                    }}
-                    className="bg-[#CB9E1B] hover:bg-[#b08713] text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
-                  >
-                    <UserPlus className="w-4 h-4" /> Cadastrar Voluntário
-                  </button>
-                )}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h3 className="text-navy-950 text-xl font-black uppercase tracking-tight">
+                    Lista de Policiais Voluntários
+                  </h3>
+                  <p className="text-navy-500 text-xs font-semibold">
+                    Ordenados automaticamente por ordem crescente de pontuação (menos pontos = maior prioridade)
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* View Mode Toggle */}
+                  <div className="bg-navy-50 p-1 rounded-xl flex border border-navy-200">
+                    <button
+                      onClick={() => setVoluntariosViewMode('por_local')}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                        voluntariosViewMode === 'por_local'
+                          ? 'bg-white text-navy-950 shadow-xs border border-navy-100'
+                          : 'text-navy-500 hover:text-navy-800'
+                      }`}
+                    >
+                      Por Posto / Local
+                    </button>
+                    <button
+                      onClick={() => setVoluntariosViewMode('ranking_geral')}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                        voluntariosViewMode === 'ranking_geral'
+                          ? 'bg-white text-navy-950 shadow-xs border border-navy-100'
+                          : 'text-navy-500 hover:text-navy-800'
+                      }`}
+                    >
+                      Ranking Geral ({rankingGeralVoluntarios.length})
+                    </button>
+                  </div>
+
+                  {canManage && (
+                    <button
+                      onClick={() => {
+                        setSelectedPolicial(null);
+                        setSearchPolicialTerm('');
+                        setDataUltimaEscalaText('');
+                        setVoluntarioPostoId('');
+                        setNrParte('');
+                        setDataParteText('');
+                        setIsVoluntarioDialogOpen(true);
+                      }}
+                      className="bg-[#CB9E1B] hover:bg-[#b08713] text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <UserPlus className="w-4 h-4" /> Cadastrar Voluntário
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {voluntariosByLocal.length === 0 ? (
-                <div className="bg-white border border-navy-100 p-12 text-center rounded-3xl">
-                  <UserCheck className="w-12 h-12 text-navy-200 mx-auto mb-4" />
-                  <p className="text-navy-950 font-black uppercase text-sm tracking-wide">Nenhum voluntário cadastrado</p>
-                  <p className="text-navy-400 text-xs mt-1">Os policiais inscritos para escala extraordinária aparecerão aqui.</p>
-                </div>
-              ) : (
-                voluntariosByLocal.map((group) => (
-                  <div key={group.local} className="bg-white border border-navy-100 rounded-3xl overflow-hidden shadow-sm">
-                    <div className="bg-navy-950 text-white px-6 py-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-[#CB9E1B]" />
-                        <span className="text-xs font-black uppercase tracking-widest">{group.local}</span>
+              {/* View: Por Local */}
+              {voluntariosViewMode === 'por_local' && (
+                voluntariosByLocal.length === 0 ? (
+                  <div className="bg-white border border-navy-100 p-12 text-center rounded-3xl">
+                    <UserCheck className="w-12 h-12 text-navy-200 mx-auto mb-4" />
+                    <p className="text-navy-950 font-black uppercase text-sm tracking-wide">Nenhum voluntário cadastrado</p>
+                    <p className="text-navy-400 text-xs mt-1">Os policiais inscritos para escala extraordinária aparecerão aqui.</p>
+                  </div>
+                ) : (
+                  voluntariosByLocal.map((group) => (
+                    <div key={group.local} className="bg-white border border-navy-100 rounded-3xl overflow-hidden shadow-sm">
+                      <div className="bg-navy-950 text-white px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-[#CB9E1B]" />
+                          <span className="text-xs font-black uppercase tracking-widest">{group.local}</span>
+                        </div>
+                        <span className="bg-[#CB9E1B] text-navy-950 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                          {group.list.length} {group.list.length === 1 ? 'militar' : 'militares'}
+                        </span>
                       </div>
-                      <span className="bg-[#CB9E1B] text-navy-950 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
-                        {group.list.length} {group.list.length === 1 ? 'militar' : 'militares'}
-                      </span>
-                    </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-navy-50/50 border-b border-navy-100">
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center w-16">Ord.</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Policial</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Matrícula</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Posto/Graduação</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Nr. Parte</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Data Parte</th>
-                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Última Escala</th>
-                            {canManage && <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-right w-36">Ações</th>}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-navy-50/50 border-b border-navy-100">
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center w-20">Prioridade</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Policial</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Matrícula</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Posto/Graduação</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Pontuação</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Escalas Cumpridas</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Nr. Parte</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Data Parte</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Última Escala</th>
+                              {canManage && <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-right w-36">Ações</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.list.map((vol, idx) => {
+                              const isNext = idx === 0;
+                              const points = vol.total_pontos ?? 0;
+                              const escalasCount = vol.qtd_escalas ?? 0;
+
+                              return (
+                                <tr 
+                                  key={vol.id} 
+                                  className={`border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors ${
+                                    isNext ? 'bg-emerald-50/40' : ''
+                                  }`}
+                                >
+                                  <td className="py-4 px-6 text-center">
+                                    {isNext ? (
+                                      <span className="inline-flex items-center justify-center bg-emerald-600 text-white text-[10px] font-black px-2 py-1 rounded-full shadow-xs" title="1º da fila para este local">
+                                        1º Lugar
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center justify-center bg-navy-100 text-navy-700 text-xs font-bold w-6 h-6 rounded-full">
+                                        {idx + 1}º
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <div className="font-black text-navy-950 uppercase text-xs">
+                                      {vol.policial?.nome || 'Operador'}
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6 text-navy-600 font-mono text-xs">{vol.policial?.matricula || '-'}</td>
+                                  <td className="py-4 px-6 text-navy-600 font-semibold text-xs">{vol.policial?.rank || 'Militar'}</td>
+                                  <td className="py-4 px-6 text-center">
+                                    <span className={`inline-flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-lg border ${
+                                      points === 0 
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : points <= 2
+                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                                    }`}>
+                                      <Award className="w-3.5 h-3.5" />
+                                      {points} {points === 1 ? 'PONTO' : 'PONTOS'}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center">
+                                    <span className="inline-flex items-center gap-1 bg-navy-100 text-navy-800 text-xs font-bold px-2 py-0.5 rounded">
+                                      {escalasCount} {escalasCount === 1 ? 'escala' : 'escalas'}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-navy-600 font-mono text-xs">{vol.nr_parte || '-'}</td>
+                                  <td className="py-4 px-6 text-center text-navy-600 text-xs">
+                                    {vol.data_parte ? formatDateToBR(vol.data_parte) : '-'}
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-xs font-semibold text-navy-800">
+                                    {vol.data_ultima_escala ? formatDateToBR(vol.data_ultima_escala) : (
+                                      <span className="text-emerald-600 font-black uppercase text-[10px] tracking-wider">Nunca Escalado</span>
+                                    )}
+                                  </td>
+                                  {canManage && (
+                                    <td className="py-4 px-6 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          onClick={() => handleEditVoluntario(vol)}
+                                          className="p-1.5 hover:bg-navy-50 text-navy-600 hover:text-navy-900 rounded-lg transition-all"
+                                          title="Editar Informações"
+                                        >
+                                          <Edit className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleOpenQuickEscala(vol)}
+                                          className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-800 rounded-lg transition-all"
+                                          title="Incluir Direto na Escala"
+                                        >
+                                          <CheckCircle className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleRemoveVoluntario(vol.id, vol.policial?.nome || '')}
+                                          className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-lg transition-all"
+                                          title="Remover Voluntário"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {/* View: Ranking Geral Unificado */}
+              {voluntariosViewMode === 'ranking_geral' && (
+                <div className="bg-white border border-navy-100 rounded-3xl overflow-hidden shadow-sm">
+                  <div className="bg-navy-950 text-white px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Award className="w-4 h-4 text-[#CB9E1B]" />
+                      <span className="text-xs font-black uppercase tracking-widest">Ranking Geral Unificado de Voluntários</span>
+                    </div>
+                    <span className="bg-[#CB9E1B] text-navy-950 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                      {rankingGeralVoluntarios.length} Voluntários Cadastrados
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-navy-50/50 border-b border-navy-100">
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center w-20">Classif.</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Policial</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Posto/Graduação</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Pontuação Total</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Escalas Cumpridas</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Local Preferencial</th>
+                          <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Última Escala</th>
+                          {canManage && <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-right w-36">Ações</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rankingGeralVoluntarios.length === 0 ? (
+                          <tr>
+                            <td colSpan={canManage ? 8 : 7} className="py-12 text-center text-navy-400">
+                              Nenhum voluntário cadastrado na escala.
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {group.list.map((vol, idx) => {
-                            const isNext = idx === 0;
+                        ) : (
+                          rankingGeralVoluntarios.map((vol, idx) => {
+                            const isTopPriority = idx === 0;
+                            const points = vol.total_pontos ?? 0;
+                            const escalasCount = vol.qtd_escalas ?? 0;
+
                             return (
                               <tr 
                                 key={vol.id} 
                                 className={`border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors ${
-                                  isNext ? 'bg-emerald-50/40' : ''
+                                  isTopPriority ? 'bg-emerald-50/40' : ''
                                 }`}
                               >
                                 <td className="py-4 px-6 text-center">
-                                  {isNext ? (
-                                    <span className="inline-flex items-center justify-center bg-emerald-100 text-emerald-800 text-[10px] font-black w-6 h-6 rounded-full" title="Próximo da escala">
-                                      {idx + 1}
-                                    </span>
-                                  ) : (
-                                    <span className="text-navy-400 font-bold text-xs">{idx + 1}</span>
-                                  )}
+                                  <span className={`inline-flex items-center justify-center font-black text-xs px-2.5 py-1 rounded-full ${
+                                    idx === 0 
+                                      ? 'bg-emerald-600 text-white shadow-xs' 
+                                      : idx < 3
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-navy-100 text-navy-700'
+                                  }`}>
+                                    {idx + 1}º
+                                  </span>
                                 </td>
                                 <td className="py-4 px-6">
                                   <div className="font-black text-navy-950 uppercase text-xs">
                                     {vol.policial?.nome || 'Operador'}
                                   </div>
+                                  <div className="text-[10px] text-navy-400 font-mono">Matrícula: {vol.policial?.matricula || '-'}</div>
                                 </td>
-                                <td className="py-4 px-6 text-navy-600 font-mono text-xs">{vol.policial?.matricula || '-'}</td>
                                 <td className="py-4 px-6 text-navy-600 font-semibold text-xs">{vol.policial?.rank || 'Militar'}</td>
-                                <td className="py-4 px-6 text-center text-navy-600 font-mono text-xs">{vol.nr_parte || '-'}</td>
-                                <td className="py-4 px-6 text-center text-navy-600 text-xs">
-                                  {vol.data_parte ? formatDateToBR(vol.data_parte) : '-'}
+                                <td className="py-4 px-6 text-center">
+                                  <span className={`inline-flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-lg border ${
+                                    points === 0 
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : points <= 2
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-purple-50 text-purple-700 border-purple-200'
+                                  }`}>
+                                    <Award className="w-3.5 h-3.5" />
+                                    {points} {points === 1 ? 'PONTO' : 'PONTOS'}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-center">
+                                  <span className="inline-flex items-center gap-1 bg-navy-100 text-navy-800 text-xs font-bold px-2 py-0.5 rounded">
+                                    {escalasCount} {escalasCount === 1 ? 'escala' : 'escalas'}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-xs font-semibold text-navy-700">
+                                  {vol.posto ? `${vol.posto.nome} - ${vol.posto.local}` : 'Sem Local'}
                                 </td>
                                 <td className="py-4 px-6 text-center text-xs font-semibold text-navy-800">
                                   {vol.data_ultima_escala ? formatDateToBR(vol.data_ultima_escala) : (
@@ -1028,12 +1470,12 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                                 )}
                               </tr>
                             );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                ))
+                </div>
               )}
             </div>
           )}
@@ -1092,6 +1534,7 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                             <tr className="bg-navy-50/50 border-b border-navy-100">
                               <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Policial</th>
                               <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Posto/Graduação</th>
+                              <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Pontos Concedidos</th>
                               <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Início do Serviço</th>
                               <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center">Término do Serviço</th>
                               <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Observações</th>
@@ -1099,36 +1542,46 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                             </tr>
                           </thead>
                           <tbody>
-                            {visibleEscalas.map((escala) => (
-                              <tr key={escala.id} className="border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors">
-                                <td className="py-4 px-6">
-                                  <div className="font-black text-navy-950 uppercase text-xs">
-                                    {escala.voluntario?.policial?.nome || 'Militar'}
-                                  </div>
-                                </td>
-                                <td className="py-4 px-6 text-navy-600 font-semibold text-xs">{escala.voluntario?.policial?.rank || 'Militar'}</td>
-                                <td className="py-4 px-6 text-center text-navy-600 text-xs font-mono">
-                                  {formatDateToBR(escala.data_inicio)}
-                                </td>
-                                <td className="py-4 px-6 text-center text-navy-600 text-xs font-mono">
-                                  {formatDateToBR(escala.data_fim)}
-                                </td>
-                                <td className="py-4 px-6 text-navy-500 text-xs italic">
-                                  {escala.observacao || 'Sem observações'}
-                                </td>
-                                {canManage && (
-                                  <td className="py-4 px-6 text-right">
-                                    <button
-                                      onClick={() => handleRemoveEscala(escala.id, escala.voluntario_id, escala.voluntario?.policial?.nome || 'Militar')}
-                                      className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-lg transition-all"
-                                      title="Remover Escala"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
+                            {visibleEscalas.map((escala) => {
+                              const points = typeof escala.pontos === 'number' ? escala.pontos : getPostoPoints(escala.posto);
+
+                              return (
+                                <tr key={escala.id} className="border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors">
+                                  <td className="py-4 px-6">
+                                    <div className="font-black text-navy-950 uppercase text-xs">
+                                      {escala.voluntario?.policial?.nome || 'Militar'}
+                                    </div>
                                   </td>
-                                )}
-                              </tr>
-                            ))}
+                                  <td className="py-4 px-6 text-navy-600 font-semibold text-xs">{escala.voluntario?.policial?.rank || 'Militar'}</td>
+                                  <td className="py-4 px-6 text-center">
+                                    <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded">
+                                      <Award className="w-3 h-3 text-[#CB9E1B]" />
+                                      +{points} {points === 1 ? 'PTO' : 'PTS'}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-navy-600 text-xs font-mono">
+                                    {formatDateToBR(escala.data_inicio)}
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-navy-600 text-xs font-mono">
+                                    {formatDateToBR(escala.data_fim)}
+                                  </td>
+                                  <td className="py-4 px-6 text-navy-500 text-xs italic">
+                                    {escala.observacao || 'Sem observações'}
+                                  </td>
+                                  {canManage && (
+                                    <td className="py-4 px-6 text-right">
+                                      <button
+                                        onClick={() => handleRemoveEscala(escala.id, escala.voluntario_id, escala.voluntario?.policial?.nome || 'Militar')}
+                                        className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-lg transition-all"
+                                        title="Remover Escala"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1162,15 +1615,21 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
           {activeTab === 'postos' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-navy-950 text-xl font-black uppercase tracking-tight">
-                  Postos de Escala Remunerada
-                </h3>
+                <div>
+                  <h3 className="text-navy-950 text-xl font-black uppercase tracking-tight">
+                    Postos de Escala Remunerada e Tabela de Pontos
+                  </h3>
+                  <p className="text-navy-500 text-xs font-semibold">
+                    Configuração de locais e pesos de pontuação por serviço cumprido
+                  </p>
+                </div>
                 {canManage && (
                   <button
                     onClick={() => {
                       setEditingPosto(null);
                       setPostoNome('');
                       setPostoLocal('');
+                      setPostoPontos(1);
                       setIsPostoDialogOpen(true);
                     }}
                     className="bg-[#CB9E1B] hover:bg-[#b08713] text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
@@ -1186,55 +1645,72 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                     <tr className="bg-navy-50/50 border-b border-navy-100">
                       <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Nome do Posto</th>
                       <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400">Localização</th>
+                      <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-center w-36">Pontuação / Escala</th>
                       {canManage && <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-navy-400 text-right w-28">Ações</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {postos.length === 0 ? (
                       <tr>
-                        <td colSpan={canManage ? 3 : 2} className="py-12 text-center text-navy-400">
+                        <td colSpan={canManage ? 4 : 3} className="py-12 text-center text-navy-400">
                           Nenhum posto de serviço cadastrado ou ativo.
                         </td>
                       </tr>
                     ) : (
-                      postos.map((p) => (
-                        <tr key={p.id} className="border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors">
-                          <td className="py-4 px-6">
-                            <div className="font-black text-navy-950 uppercase text-xs">
-                              {p.nome}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-navy-600 font-semibold text-xs flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-navy-400" />
-                            {p.local}
-                          </td>
-                          {canManage && (
-                            <td className="py-4 px-6 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => {
-                                    setEditingPosto(p);
-                                    setPostoNome(p.nome);
-                                    setPostoLocal(p.local);
-                                    setIsPostoDialogOpen(true);
-                                  }}
-                                  className="p-1.5 hover:bg-navy-50 text-navy-600 hover:text-navy-900 rounded-lg transition-all"
-                                  title="Editar Posto"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleRemovePosto(p.id, p.nome)}
-                                  className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-lg transition-all"
-                                  title="Remover Posto"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                      postos.map((p) => {
+                        const pts = getPostoPoints(p);
+                        return (
+                          <tr key={p.id} className="border-b border-navy-100/50 hover:bg-navy-50/30 transition-colors">
+                            <td className="py-4 px-6">
+                              <div className="font-black text-navy-950 uppercase text-xs">
+                                {p.nome}
                               </div>
                             </td>
-                          )}
-                        </tr>
-                      ))
+                            <td className="py-4 px-6 text-navy-600 font-semibold text-xs flex items-center gap-2">
+                              <MapPin className="w-3.5 h-3.5 text-navy-400" />
+                              {p.local}
+                            </td>
+                            <td className="py-4 px-6 text-center">
+                              <span className={`inline-flex items-center gap-1 text-xs font-black px-3 py-1 rounded-lg border ${
+                                pts >= 5
+                                  ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                  : pts >= 2
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                              }`}>
+                                <Award className="w-3.5 h-3.5" />
+                                {pts} {pts === 1 ? 'Ponto' : 'Pontos'}
+                              </span>
+                            </td>
+                            {canManage && (
+                              <td className="py-4 px-6 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setEditingPosto(p);
+                                      setPostoNome(p.nome);
+                                      setPostoLocal(p.local);
+                                      setPostoPontos(pts);
+                                      setIsPostoDialogOpen(true);
+                                    }}
+                                    className="p-1.5 hover:bg-navy-50 text-navy-600 hover:text-navy-900 rounded-lg transition-all"
+                                    title="Editar Posto"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemovePosto(p.id, p.nome)}
+                                    className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-lg transition-all"
+                                    title="Remover Posto"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -1301,14 +1777,65 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                     </div>
                   )}
 
-                  {selectedPolicial && (
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-emerald-600" />
-                      <div className="text-[11px] text-emerald-800 font-bold">
-                        Policial Selecionado: {selectedPolicial.nome} (Matrícula: {selectedPolicial.matricula})
+                  {/* Selected Officer & Automatic Calculated Score Card */}
+                  {selectedPolicial && (() => {
+                    const stats = getOfficerStats(selectedPolicial.id);
+                    return (
+                      <div className="space-y-3 animate-in fade-in duration-200 mt-2">
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="w-5 h-5 text-emerald-600" />
+                              <div>
+                                <div className="text-xs font-black text-emerald-950 uppercase">{selectedPolicial.nome}</div>
+                                <div className="text-[10px] text-emerald-700 font-mono">Matrícula: {selectedPolicial.matricula || '-'} • {selectedPolicial.rank || 'Militar'}</div>
+                              </div>
+                            </div>
+                            <span className="bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                              Selecionado
+                            </span>
+                          </div>
+
+                          {/* Automatic Points and Scales Panel */}
+                          <div className="bg-white/90 border border-emerald-200 rounded-xl p-3 space-y-2">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-navy-700 flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-[#CB9E1B]" />
+                                Pontuação Calculada Automaticamente:
+                              </span>
+                              <span className="font-black text-xs text-navy-950 bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded">
+                                {stats.totalPontos} {stats.totalPontos === 1 ? 'PONTO' : 'PONTOS'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-navy-600">
+                              <span>Escalas já cumpridas no histórico:</span>
+                              <span className="font-bold text-navy-900">{stats.totalEscalas} escalas</span>
+                            </div>
+
+                            {stats.breakdown.length > 0 && (
+                              <div className="pt-2 border-t border-emerald-100/80 space-y-1">
+                                <div className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Detalhamento dos postos atendidos:</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {stats.breakdown.map((b) => (
+                                    <span key={b.postoNome} className="text-[10px] bg-navy-50 border border-navy-200 text-navy-800 px-2 py-0.5 rounded font-medium">
+                                      {b.count}x {b.postoNome} ({b.totalPontos} pts)
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {stats.lastEscalaDate && (
+                              <div className="text-[10px] text-navy-500 pt-1">
+                                Última escala realizada: <strong>{formatDateToBR(stats.lastEscalaDate)}</strong> ({stats.lastEscalaPostoNome || 'Posto'})
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {selectedPolicial && (
@@ -1323,11 +1850,14 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                         className="w-full bg-navy-50/50 border border-navy-100 rounded-xl px-4 py-3 text-xs font-semibold text-navy-950 outline-none focus:border-navy-400 focus:bg-white transition-all"
                       >
                         <option value="">Selecione o local/posto...</option>
-                        {postos.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.nome} - {p.local}
-                          </option>
-                        ))}
+                        {postos.map((p) => {
+                          const pts = getPostoPoints(p);
+                          return (
+                            <option key={p.id} value={p.id}>
+                              {p.nome} - {p.local} ({pts} {pts === 1 ? 'pt' : 'pts'})
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -1615,15 +2145,29 @@ export const EscalaRemuneradaPage: React.FC<EscalaRemuneradaPageProps> = ({ user
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-navy-500 uppercase tracking-widest">Localização / Endereço</label>
+                  <label className="block text-[10px] font-black text-navy-500 uppercase tracking-widest">Localização / Detalhe</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Av. Governador Chagas Rodrigues, Centro"
+                    placeholder="Ex: Pelotão Especial de Fronteira, Posto Fiscal..."
                     value={postoLocal}
                     onChange={(e) => setPostoLocal(e.target.value)}
                     className="w-full bg-navy-50/50 border border-navy-100 rounded-xl px-4 py-3 text-xs font-semibold text-navy-950 placeholder:text-navy-400 outline-none focus:border-navy-400 focus:bg-white transition-all"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-black text-navy-500 uppercase tracking-widest">Pontuação por Escala (Pontos)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    required
+                    value={postoPontos}
+                    onChange={(e) => setPostoPontos(parseInt(e.target.value) || 1)}
+                    className="w-full bg-navy-50/50 border border-navy-100 rounded-xl px-4 py-3 text-xs font-semibold text-navy-950 outline-none focus:border-navy-400 focus:bg-white transition-all"
+                  />
+                  <p className="text-[10px] text-navy-400">Padrão: Operações Federais = 1 pt | PEF = 2 pts | Apoio Receita Federal = 5 pts</p>
                 </div>
 
                 <div className="flex gap-3 pt-2">
